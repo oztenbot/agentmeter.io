@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agentmeter.io — Usage metering for the agent economy</title>
+  <meta name="description" content="Drop-in usage metering for APIs that serve AI agents. HMAC-signed requests, Merkle-attested batches, and reconciliation for the emerging agent-to-service billing stack.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="logo">agentmeter.io</a>
+    <div class="nav-links">
+      <a href="https://github.com/oztenbot/agent-meter-rs">GitHub</a>
+      <a href="https://crates.io/crates/agent-meter">crates.io</a>
+      <a href="https://docs.rs/agent-meter">docs</a>
+      <a href="https://github.com/oztenbot/agent-meter">npm</a>
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="badge">Rust + TypeScript · MIT · Open Source</div>
+        <h1>Usage metering for<br>the agent economy</h1>
+        <p class="tagline">
+          Drop-in metering for APIs that serve AI agents.<br>
+          Track every request, attribute it to an agent,<br>
+          and issue cryptographic usage receipts.
+        </p>
+        <div class="cta-row">
+          <a href="#install" class="btn-primary">Add to your API</a>
+          <a href="https://github.com/oztenbot/agent-meter-rs" class="btn-ghost">View on GitHub &rarr;</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Two-sided code preview -->
+    <section class="two-sided">
+      <div class="side-panel">
+        <div class="panel-label">Service X &mdash; 4 lines</div>
+        <pre class="code-block"><span class="c">// axum middleware — wrap any route</span>
+<span class="kw">let</span> meter = <span class="ty">AgentMeter</span>::new(<span class="ty">MeterConfig</span> {
+    service_id: <span class="s">"my-api"</span>.into(),
+    ..Default::default()
+});
+
+<span class="kw">let</span> app = <span class="ty">Router</span>::new()
+    .route(<span class="s">"/api/generate"</span>, post(handler)
+        .layer(<span class="ty">AgentMeterLayer</span>::new(meter)
+            .with_receipt_secret(<span class="s">"svc-secret"</span>)));</pre>
+      </div>
+      <div class="side-panel">
+        <div class="panel-label">Agent Y &mdash; sign + reconcile</div>
+        <pre class="code-block"><span class="kw">let</span> client = <span class="ty">AgentClient</span>::new(<span class="ty">ClientConfig</span> {
+    agent_id: <span class="s">"agent-y"</span>.into(),
+    signing_secret: <span class="ty">Some</span>(<span class="s">"shared-secret"</span>.into()),
+    service_url: <span class="s">"https://api.agentmeter.io"</span>.into(),
+    ..Default::default()
+});
+
+<span class="c">// Signed request → receipt in response headers</span>
+<span class="kw">let</span> resp = client.call(<span class="s">"POST"</span>, <span class="s">"/api/generate"</span>, body).await?;
+
+<span class="c">// Diff local log against service records</span>
+<span class="kw">let</span> report = client.reconcile().await?;
+<span class="c">// matched: 47 · agent_only: 2 · service_only: 0</span></pre>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="how-it-works">
+      <h2>How it works</h2>
+      <p class="section-sub">Two parties. One correlation key. Cryptographic proofs on both sides.</p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Agent signs the request</h3>
+            <p>Before sending, Agent Y computes <code>HMAC(secret, body)</code> and sends it as <code>X-Agent-Signature</code>. This signature is the unforgeable correlation key between both parties' records.</p>
+          </div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Service meters and issues a receipt</h3>
+            <p>The axum middleware verifies the signature, builds a <code>UsageRecord</code>, stores it, and injects <code>X-Usage-Receipt: HMAC(svc_secret, sig)</code> into the response. The receipt proves Service X recorded the request.</p>
+          </div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Both parties reconcile</h3>
+            <p>Agent Y downloads Service X's usage records and diffs them against its local log. Unmatched records surface as <code>agent_only</code> (not metered) or <code>service_only</code> (unexpected charges).</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trust pillars -->
+    <section class="pillars">
+      <div class="pillar">
+        <div class="pillar-icon">&#x1F511;</div>
+        <h3>HMAC-SHA256 signing</h3>
+        <p>Every request body is signed. Service X can't fabricate Agent Y's signatures. Compatible byte-for-byte with the TypeScript SDK.</p>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon">&#x1F333;</div>
+        <h3>Merkle attestation</h3>
+        <p>Batches ship with a Merkle root signed over all records. Any tampering in transit invalidates the root — detectable by either party.</p>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon">&#x2696;&#xFE0F;</div>
+        <h3>Reconciliation</h3>
+        <p>Periodic diff by <code>requestSignature</code>. Matched, unmatched, and discrepant records surfaced with counts. Same model as financial statements.</p>
+      </div>
+    </section>
+
+    <!-- Transports -->
+    <section class="transports">
+      <h2>Transports</h2>
+      <p class="section-sub">Records go wherever you need them. Composable and swappable.</p>
+      <div class="transport-grid">
+        <div class="transport-card">
+          <div class="transport-name">Memory</div>
+          <div class="transport-desc">In-process. All clones share the same buffer. Best for development and testing.</div>
+        </div>
+        <div class="transport-card">
+          <div class="transport-name">SQLite <span class="feature-flag">feature = "sqlite"</span></div>
+          <div class="transport-desc">Persistent local storage. WAL mode. Survives restarts. No external database needed.</div>
+        </div>
+        <div class="transport-card">
+          <div class="transport-name">HTTP</div>
+          <div class="transport-desc">Batches records and POSTs them to a backend. Retries with exponential backoff. Handles 429 + <code>Retry-After</code>.</div>
+        </div>
+        <div class="transport-card">
+          <div class="transport-name">Attestation</div>
+          <div class="transport-desc">Wraps any transport. Each batch gets a signed Merkle root attestation before forwarding.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section id="install" class="install">
+      <h2>Install</h2>
+      <div class="install-cols">
+        <div class="install-col">
+          <div class="install-label">Service X &mdash; Cargo.toml</div>
+          <pre class="code-block"><span class="c"># Core + axum middleware</span>
+agent-meter = <span class="s">"0.1"</span>
+agent-meter-axum = <span class="s">"0.1"</span>
+
+<span class="c"># Optional: persistent SQLite storage</span>
+agent-meter = { version = <span class="s">"0.1"</span>, features = [<span class="s">"sqlite"</span>] }</pre>
+        </div>
+        <div class="install-col">
+          <div class="install-label">Agent Y &mdash; Cargo.toml</div>
+          <pre class="code-block"><span class="c"># Agent-side: signing + reconciliation</span>
+agent-meter-client = <span class="s">"0.1"</span></pre>
+          <div class="install-label" style="margin-top: 1.5rem;">TypeScript (npm)</div>
+          <pre class="code-block">npm install @oztenbot/agent-meter</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hosted API callout -->
+    <section class="api-callout">
+      <div class="callout-inner">
+        <div>
+          <h3>Hosted billing backend</h3>
+          <p>Send records to <code>api.agentmeter.io</code> instead of running your own SQLite. Queryable usage history, invoicing, and rate limiting included.</p>
+        </div>
+        <pre class="code-block callout-code"><span class="ty">HttpTransport</span>::new(<span class="ty">HttpTransportOptions</span> {
+    url: <span class="s">"https://api.agentmeter.io/v1/usage/batch"</span>.into(),
+    headers: [(<span class="s">"Authorization"</span>, <span class="s">"Bearer sk-..."</span>)].into(),
+    ..Default::default()
+})</pre>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-left">
+        <span class="logo">agentmeter.io</span>
+        <span class="footer-copy">MIT License</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/oztenbot/agent-meter-rs">agent-meter-rs (Rust)</a>
+        <a href="https://github.com/oztenbot/agent-meter">agent-meter (npm)</a>
+        <a href="https://crates.io/crates/agent-meter">crates.io</a>
+        <a href="https://github.com/oztenbot/agent-meter/blob/main/docs/security.md">Security deep dive</a>
+        <a href="https://docs.rs/agent-meter">docs.rs</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
